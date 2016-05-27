@@ -2,9 +2,9 @@
 //
 //                         PelotonDB
 //
-// BwTree.h
+// BWTree.h
 //
-// Identification: src/backend/index/BwTree.h
+// Identification: src/backend/index/BWTree.h
 //
 // Copyright (c) 2015, Carnegie Mellon University Database Group
 //
@@ -121,7 +121,33 @@ constexpr NodeID INVALID_NODE_ID = NodeID(-1);
 bool print_flag = true;
 
 /*
- * class BwTree() - Lock-free BwTree index implementation
+ * class BwTree - Lock-free BwTree index implementation
+ *
+ * Template arguments:
+ *  - RawKeyType: Key type of the map
+ *                *** DO NOT CONFUSE THIS WITH WRAPPED KEY TYPE
+ *
+ *  - ValueType: Value type of the map. Note that it is possible
+ *               that a single key is mapped to multiple values
+ *
+ *  - KeyComparator: "less than" relation comparator for RawKeyType
+ *                   Returns true if "less than" relation holds
+ *                   *** NOTE: THIS OBJECT DO NOT NEED TO HAVE A DEFAULT
+ *                   CONSTRUCTOR. THIS MODIFICATION WAS MADE TO FIT
+ *                   INTO Peloton's ARCHITECTURE
+ *
+ *  - KeyEqualityChecker: Equality checker for RawKeyType
+ *                        Returns true if two keys are equal
+ *
+ *  - ValueEqualityChecker: Equality checker for value type
+ *                          Returns true for ValueTypes that are equal
+ *
+ *  - ValueHashFunc: Hashes ValueType into a 32 bit integer
+ *                   This is used in unordered_map
+ *
+ * If not specified, then by default all arguments except the first two will
+ * be set as the standard operator in C++ (i.e. the operator for primitive types
+ * AND/OR overloaded operators for derived types)
  */
 template <typename RawKeyType,
           typename ValueType,
@@ -141,6 +167,7 @@ class BwTree {
   class InteractiveDebugger;
   friend InteractiveDebugger;
 
+  // This does not have to be the friend class of BwTree
   class EpochManager;
 
  public:
@@ -198,7 +225,7 @@ class BwTree {
     LeafUpdateType,
     LeafRemoveType,
     LeafMergeType,
-    LeafAbortType, // Unconditional abort
+    LeafAbortType, // Unconditional abort (this type is not used)
 
     // Only valid for inner
     InnerInsertType,
@@ -224,8 +251,8 @@ class BwTree {
    * for arbitrary key types
    *
    * NOTE: Comparison between +Inf and +Inf, comparison between
-   * -Inf and -Inf, and equality check between them are not defined
-   * If they occur at run time, then just fail
+   * -Inf and -Inf, and equality check between them are also defined
+   * because they will be needed in corner cases
    */
   class KeyType {
    public:
@@ -245,6 +272,8 @@ class BwTree {
 
     /*
      * Constructor - Use value type only (must not be raw value type)
+     *
+     * This function assumes RawKeyType being default constructible
      */
     KeyType(ExtendedKeyValue p_type) :
       key{},
@@ -257,14 +286,14 @@ class BwTree {
     /*
      * IsNegInf() - Whether the key value is -Inf
      */
-    bool IsNegInf() const {
+    inline bool IsNegInf() const {
       return type == ExtendedKeyValue::NegInf;
     }
 
     /*
      * IsPosInf() - Whether the key value is +Inf
      */
-    bool IsPosInf() const {
+    inline bool IsPosInf() const {
       return type == ExtendedKeyValue::PosInf;
     }
   };
@@ -276,6 +305,9 @@ class BwTree {
   class WrappedKeyComparator {
    public:
     bool operator()(const KeyType &key1, const KeyType &key2) {
+      // TODO: If the key comparator is not trivially constructible
+      // then this would fail compilation - need to find a way to pass
+      // the object into the comparator function
       static KeyComparator key_less_obj{};
 
       // As long as the second operand is not -Inf then
@@ -1788,7 +1820,7 @@ class BwTree {
     /*
      * GetNextNodeID() - Return the NodeID of its right sibling
      */
-    inline NodeID GetNextNodeID() {
+    inline const NodeID GetNextNodeID() {
       if(is_leaf == true) {
         return GetLogicalLeafNode()->next_node_id;
       } else {
@@ -1862,10 +1894,10 @@ class BwTree {
    * Any tree instance must start with an intermediate node as root, together
    * with an empty leaf node as child
    */
-  BwTree(KeyComparator p_key_cmp_obj = std::less<RawKeyType>{},
-         KeyEqualityChecker p_key_eq_obj = std::equal_to<RawKeyType>{},
-         ValueEqualityChecker p_value_eq_obj = std::equal_to<ValueType>{},
-         ValueHashFunc p_value_hash_obj = std::hash<ValueType>{},
+  BwTree(KeyComparator p_key_cmp_obj = KeyComparator{},
+         KeyEqualityChecker p_key_eq_obj = KeyEqualityChecker{},
+         ValueEqualityChecker p_value_eq_obj = ValueEqualityChecker{},
+         ValueHashFunc p_value_hash_obj = ValueHashFunc{},
          bool p_key_dup = false) :
       key_cmp_obj{p_key_cmp_obj},
       key_eq_obj{p_key_eq_obj},
@@ -4482,7 +4514,7 @@ before_switch:
                                         delete_node_p,
                                         parent_snapshot_p->node_p);
         if(ret == true) {
-          bwt_printf("Index term delete delta installed, ID = %lu\n",
+          bwt_printf("Index term delete delta installed, ID = %lu; ABORT\n",
                      parent_snapshot_p->node_id);
 
           // Update in parent snapshot
@@ -6703,7 +6735,7 @@ before_switch:
         std::string opcode;
         std::cin >> opcode;
 
-        // If read EOF then resume BwTree execution
+        // If read EOF then resume BWTree execution
         if (!std::cin) {
           return;
         }
@@ -7287,5 +7319,4 @@ before_switch:
 
 }  // End index namespace
 }  // End peloton namespace
-
 
