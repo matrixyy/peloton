@@ -71,12 +71,14 @@ class configuration {
   // enable exponential backoff
   bool run_backoff;
 
+  // whether using Queue scheduler
+  bool queue_scheduler;
+
   // protocol type
   ConcurrencyType protocol;
 
   // gc protocol type
   GCType gc_protocol;
-  
 };
 
 extern configuration state;

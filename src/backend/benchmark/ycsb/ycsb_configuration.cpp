@@ -24,24 +24,26 @@ namespace benchmark {
 namespace ycsb {
 
 void Usage(FILE *out) {
-  fprintf(out,
-          "Command line options : ycsb <options> \n"
-          "   -h --help              :  Print help message \n"
-          "   -k --scale_factor      :  # of tuples \n"
-          "   -d --duration          :  execution duration \n"
-          "   -s --snapshot_duration :  snapshot duration \n"
-          "   -b --backend_count     :  # of backends \n"
-          "   -c --column_count      :  # of columns \n"
-          "   -u --write_ratio       :  Fraction of updates \n"
-          "   -z --zipf_theta        :  theta to control skewness \n"
-          "   -m --mix_txn           :  run read/write mix txn \n"
-          "   -e --exp_backoff       :  enable exponential backoff \n"
-          "   -p --protocol          :  choose protocol, default OCC\n"
-          "                             protocol could be occ, pcc, ssi, sread, ewrite, occrb, and to\n"
-          "   -g --gc_protocol       :  choose gc protocol, default OFF\n"
-          "                             gc protocol could be off, co, va"
-
-  );
+  fprintf(
+      out,
+      "Command line options : ycsb <options> \n"
+      "   -h --help              :  Print help message \n"
+      "   -k --scale_factor      :  # of tuples \n"
+      "   -d --duration          :  execution duration \n"
+      "   -s --snapshot_duration :  snapshot duration \n"
+      "   -b --backend_count     :  # of backends \n"
+      "   -c --column_count      :  # of columns \n"
+      "   -u --write_ratio       :  Fraction of updates \n"
+      "   -z --zipf_theta        :  theta to control skewness \n"
+      "   -m --mix_txn           :  run read/write mix txn \n"
+      "   -e --exp_backoff       :  enable exponential backoff \n"
+      "   -p --protocol          :  choose protocol, default OCC\n"
+      "                             protocol could be occ, pcc, ssi, "
+      "sread, ewrite, occrb, and to\n"
+      "   -g --gc_protocol       :  choose gc protocol, default OFF\n"
+      "                             gc protocol could be off, co, va\n"
+      "   -q --queue_scheduler       :  choose queue scheduler, default OFF\n"
+      "                             scheduler could be queue...");
   exit(EXIT_FAILURE);
 }
 
@@ -57,6 +59,7 @@ static struct option opts[] = {
     {"mix_txn", no_argument, NULL, 'm'},
     {"protocol", optional_argument, NULL, 'p'},
     {"gc_protocol", optional_argument, NULL, 'g'},
+    {"queue_scheduler", no_argument, NULL, 'q'},
     {NULL, 0, NULL, 0}};
 
 void ValidateScaleFactor(const configuration &state) {
@@ -133,12 +136,13 @@ void ParseArguments(int argc, char *argv[], configuration &state) {
   state.zipf_theta = 0.0;
   state.run_mix = false;
   state.run_backoff = false;
+  state.queue_scheduler = false;
   state.protocol = CONCURRENCY_TYPE_OPTIMISTIC;
   state.gc_protocol = GC_TYPE_OFF;
   // Parse args
   while (1) {
     int idx = 0;
-    int c = getopt_long(argc, argv, "ahmek:d:s:c:u:b:z:p:g:", opts, &idx);
+    int c = getopt_long(argc, argv, "ahmeqk:d:s:c:u:b:z:p:g:", opts, &idx);
 
     if (c == -1) break;
 
@@ -170,6 +174,9 @@ void ParseArguments(int argc, char *argv[], configuration &state) {
       case 'e':
         state.run_backoff = true;
         break;
+      case 'q':
+        state.queue_scheduler = true;
+        break;
       case 'p': {
         char *protocol = optarg;
         if (strcmp(protocol, "occ") == 0) {
@@ -196,11 +203,11 @@ void ParseArguments(int argc, char *argv[], configuration &state) {
         char *gc_protocol = optarg;
         if (strcmp(gc_protocol, "off") == 0) {
           state.gc_protocol = GC_TYPE_OFF;
-        }else if (strcmp(gc_protocol, "va") == 0) {
+        } else if (strcmp(gc_protocol, "va") == 0) {
           state.gc_protocol = GC_TYPE_VACUUM;
-        }else if (strcmp(gc_protocol, "co") == 0) {
+        } else if (strcmp(gc_protocol, "co") == 0) {
           state.gc_protocol = GC_TYPE_CO;
-        }else {
+        } else {
           fprintf(stderr, "\nUnknown gc protocol: %s\n", gc_protocol);
           exit(EXIT_FAILURE);
         }
@@ -228,6 +235,7 @@ void ParseArguments(int argc, char *argv[], configuration &state) {
 
   LOG_INFO("%s : %d", "Run mix query", state.run_mix);
   LOG_INFO("%s : %d", "Run exponential backoff", state.run_backoff);
+  LOG_INFO("%s : %d", "Run queue scheduler", state.queue_scheduler);
 }
 
 }  // namespace ycsb

@@ -40,6 +40,7 @@
 
 #include "backend/concurrency/transaction.h"
 #include "backend/concurrency/transaction_manager_factory.h"
+#include "backend/concurrency/transaction_scheduler.h"
 
 #include "backend/executor/executor_context.h"
 #include "backend/executor/abstract_executor.h"
@@ -72,7 +73,6 @@ namespace peloton {
 namespace benchmark {
 namespace ycsb {
 
-
 /////////////////////////////////////////////////////////
 // WORKLOAD
 /////////////////////////////////////////////////////////
@@ -90,6 +90,95 @@ static void PinToCore(size_t core) {
   pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
 }
 
+void RunBackendWithQueue(oid_t thread_id) {
+  PinToCore(thread_id);
+
+  auto update_ratio = state.update_ratio;
+
+  oid_t &execution_count_ref = abort_counts[thread_id];
+  oid_t &transaction_count_ref = commit_counts[thread_id];
+
+  ZipfDistribution zipf(state.scale_factor * 1000 - 1, state.zipf_theta);
+
+  // Run these many transactions
+  if (state.run_mix) {
+
+    MixedPlans mixed_plans = PrepareMixedPlan();
+
+    int write_count = 10 * update_ratio;
+    int read_count = 10 - write_count;
+
+    // backoff
+    uint32_t backoff_shifts = 0;
+    while (true) {
+      if (is_running == false) {
+        break;
+      }
+      while (RunMixed(mixed_plans, zipf, read_count, write_count) == false) {
+        execution_count_ref++;
+        // backoff
+        if (state.run_backoff) {
+          if (backoff_shifts < 63) {
+            ++backoff_shifts;
+          }
+          uint64_t spins = 1UL << backoff_shifts;
+          spins *= 100;
+          while (spins) {
+            _mm_pause();
+            --spins;
+          }
+        }
+      }
+      backoff_shifts >>= 1;
+
+      transaction_count_ref++;
+    }
+  } else {
+
+    fast_random rng(rand());
+    // backoff
+    uint32_t backoff_shifts = 0;
+    while (true) {
+      if (is_running == false) {
+        break;
+      }
+      auto rng_val = rng.next_uniform();
+
+      ////////////////////////////////////////////////////////////
+      // Generate a query and insert the query into the queue
+      ////////////////////////////////////////////////////////////
+      UpdateQuery *query = nullptr;
+      if (rng_val < update_ratio) {
+        // GenerateAndQueueUpdate(zipf);
+        query = GenerateAndQueueUpdate(zipf);
+      } else {
+        query = GenerateAndQueueUpdate(zipf);
+      }
+      ////////////////////////////////////////////////////////////
+      // Execute a query from the queue
+      ////////////////////////////////////////////////////////////
+      // if (PopAndExecuteQuery() == false) {
+      if (PopAndExecuteQuery(query) == false) {
+        execution_count_ref++;
+        // backoff
+        if (state.run_backoff) {
+          if (backoff_shifts < 63) {
+            ++backoff_shifts;
+          }
+          uint64_t spins = 1UL << backoff_shifts;
+          spins *= 100;
+          while (spins) {
+            _mm_pause();
+            --spins;
+          }
+        }
+      }  // end PopAndExecuteQuery() == false
+
+      transaction_count_ref++;
+    }
+  }
+}
+
 void RunBackend(oid_t thread_id) {
   PinToCore(thread_id);
 
@@ -98,18 +187,16 @@ void RunBackend(oid_t thread_id) {
   oid_t &execution_count_ref = abort_counts[thread_id];
   oid_t &transaction_count_ref = commit_counts[thread_id];
 
-  ZipfDistribution zipf(state.scale_factor * 1000 - 1,
-                        state.zipf_theta);
-
+  ZipfDistribution zipf(state.scale_factor * 1000 - 1, state.zipf_theta);
 
   // Run these many transactions
   if (state.run_mix) {
 
     MixedPlans mixed_plans = PrepareMixedPlan();
-    
+
     int write_count = 10 * update_ratio;
     int read_count = 10 - write_count;
-    
+
     // backoff
     uint32_t backoff_shifts = 0;
     while (true) {
@@ -210,8 +297,15 @@ void RunWorkload() {
   }
 
   // Launch a group of threads
-  for (oid_t thread_itr = 0; thread_itr < num_threads; ++thread_itr) {
-    thread_group.push_back(std::move(std::thread(RunBackend, thread_itr)));
+  if (state.queue_scheduler == true) {
+    for (oid_t thread_itr = 0; thread_itr < num_threads; ++thread_itr) {
+      thread_group.push_back(
+          std::move(std::thread(RunBackendWithQueue, thread_itr)));
+    }
+  } else {
+    for (oid_t thread_itr = 0; thread_itr < num_threads; ++thread_itr) {
+      thread_group.push_back(std::move(std::thread(RunBackend, thread_itr)));
+    }
   }
 
   for (size_t round_id = 0; round_id < snapshot_round; ++round_id) {
@@ -301,14 +395,12 @@ void RunWorkload() {
   commit_counts = nullptr;
 }
 
-
 /////////////////////////////////////////////////////////
 // HARNESS
 /////////////////////////////////////////////////////////
 
-
-std::vector<std::vector<Value>>
-ExecuteReadTest(executor::AbstractExecutor* executor) {
+std::vector<std::vector<Value>> ExecuteReadTest(
+    executor::AbstractExecutor *executor) {
 
   std::vector<std::vector<Value>> logical_tile_values;
 
@@ -317,16 +409,15 @@ ExecuteReadTest(executor::AbstractExecutor* executor) {
     std::unique_ptr<executor::LogicalTile> result_tile(executor->GetOutput());
 
     // is this possible?
-    if(result_tile == nullptr)
-      break;
+    if (result_tile == nullptr) break;
 
     auto column_count = result_tile->GetColumnCount();
 
     for (oid_t tuple_id : *result_tile) {
-      expression::ContainerTuple<executor::LogicalTile> cur_tuple(result_tile.get(),
-                                                                  tuple_id);
+      expression::ContainerTuple<executor::LogicalTile> cur_tuple(
+          result_tile.get(), tuple_id);
       std::vector<Value> tuple_values;
-      for (oid_t column_itr = 0; column_itr < column_count; column_itr++){
+      for (oid_t column_itr = 0; column_itr < column_count; column_itr++) {
         auto value = cur_tuple.GetValue(column_itr);
         tuple_values.push_back(value);
       }
@@ -339,12 +430,102 @@ ExecuteReadTest(executor::AbstractExecutor* executor) {
   return std::move(logical_tile_values);
 }
 
-void ExecuteUpdateTest(executor::AbstractExecutor* executor) {
-  
+void ExecuteUpdateTest(executor::AbstractExecutor *executor) {
+
   // Execute stuff
-  while (executor->Execute() == true);
+  while (executor->Execute() == true)
+    ;
 }
 
+bool PopAndExecuteQuery(UpdateQuery *query) {
+  /////////////////////////////////////////////////////////
+  // EXECUTE : Get a query from the queue and execute it
+  /////////////////////////////////////////////////////////
+
+  // Start a txn to execute the query
+  auto &txn_manager = concurrency::TransactionManagerFactory::GetInstance();
+  auto txn = txn_manager.BeginTransaction();
+
+  // Get a query from a queue
+  // concurrency::TransactionQuery *query = nullptr;
+  // concurrency::TransactionScheduler::GetInstance().SimpleDequeue(query);
+
+  // Execute the query
+  // ExecuteUpdateTest(update_plans.update_executor_);
+  assert(query != nullptr);
+  peloton::PlanNodeType plan_type = query->GetPlanType();
+
+  switch (plan_type) {
+
+    case PLAN_NODE_TYPE_UPDATE: {
+      ExecuteUpdateTest(
+          reinterpret_cast<UpdateQuery *>(query)->GetUpdateExecutor());
+      break;
+    }
+
+    default: {
+      LOG_ERROR("plan_type :: Unsupported Plan Tag: %u ", plan_type);
+      elog(INFO, "Query: ");
+      break;
+    }
+  }
+
+  /////////////////////////////////////////////////////////
+  // Transaction fail
+  /////////////////////////////////////////////////////////
+  if (txn->GetResult() != Result::RESULT_SUCCESS) {
+    txn_manager.AbortTransaction();
+    // Delete the query
+    switch (plan_type) {
+
+      case PLAN_NODE_TYPE_UPDATE: {
+        reinterpret_cast<UpdateQuery *>(query)->Cleanup();
+        delete query;
+        break;
+      }
+
+      default: {
+        LOG_ERROR("plan_type :: Unsupported Plan Tag: %u ", plan_type);
+        elog(INFO, "Query: ");
+        break;
+      }
+    }
+
+    return false;
+  }
+
+  /////////////////////////////////////////////////////////
+  // Transaction success
+  /////////////////////////////////////////////////////////
+  assert(txn->GetResult() == Result::RESULT_SUCCESS);
+  auto result = txn_manager.CommitTransaction();
+
+  if (result == Result::RESULT_SUCCESS) {
+    // Delete the query
+    switch (plan_type) {
+
+      case PLAN_NODE_TYPE_UPDATE: {
+        reinterpret_cast<UpdateQuery *>(query)->Cleanup();
+        delete query;
+        break;
+      }
+
+      default: {
+        LOG_ERROR("plan_type :: Unsupported Plan Tag: %u ", plan_type);
+        elog(INFO, "Query: ");
+        break;
+      }
+    }
+
+    return true;
+
+  } else {
+    // transaction failed commitment.
+    assert(result == Result::RESULT_ABORTED ||
+           result == Result::RESULT_FAILURE);
+    return false;
+  }
+}
 
 }  // namespace ycsb
 }  // namespace benchmark
