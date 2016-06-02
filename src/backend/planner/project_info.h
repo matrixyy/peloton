@@ -41,9 +41,9 @@ namespace planner {
  */
 class ProjectInfo {
  public:
-  ProjectInfo(ProjectInfo & project_info) = delete;
+  ProjectInfo(ProjectInfo &project_info) = delete;
   ProjectInfo operator=(ProjectInfo &) = delete;
-  ProjectInfo(ProjectInfo &&) = delete;
+  // ProjectInfo(ProjectInfo &&) = delete;
   ProjectInfo operator=(ProjectInfo &&) = delete;
 
   /* Force explicit move to emphasize the transfer of ownership */
@@ -52,14 +52,26 @@ class ProjectInfo {
   ProjectInfo(TargetList &&tl, DirectMapList &&dml)
       : target_list_(tl), direct_map_list_(dml) {}
 
-  ProjectInfo(const ProjectInfo & project_info) {
+  ProjectInfo(const ProjectInfo &project_info) {
     direct_map_list_ = project_info.GetDirectMapList();
     // target_list_ = project_info.GetTargetList();
 
     for (const Target &target : project_info.GetTargetList()) {
       target_list_.push_back(
-        std::pair<oid_t, const expression::AbstractExpression *>(
-          target.first, target.second->Copy()));
+          std::pair<oid_t, const expression::AbstractExpression *>(
+              target.first, target.second->Copy()));
+    }
+  }
+
+  // Added for Queued
+  ProjectInfo(const ProjectInfo *project_info) {
+    direct_map_list_ = project_info->GetDirectMapList();
+    // target_list_ = project_info.GetTargetList();
+
+    for (const Target &target : project_info->GetTargetList()) {
+      target_list_.push_back(
+          std::pair<oid_t, const expression::AbstractExpression *>(
+              target.first, target.second->Copy()));
     }
   }
 
@@ -71,7 +83,9 @@ class ProjectInfo {
     target_list_ = target_list;
   }
 
-  bool isNonTrivial() const { return target_list_.size() > 0; };
+  bool isNonTrivial() const {
+    return target_list_.size() > 0;
+  };
 
   bool Evaluate(storage::Tuple *dest, const AbstractTuple *tuple1,
                 const AbstractTuple *tuple2,

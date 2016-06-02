@@ -37,7 +37,8 @@ class UpdateExecutor : public AbstractExecutor {
   }
 
   void SetTargetList(const TargetList &target_list) {
-    project_info_->SetTargetList(target_list);
+    // project_info_->SetTargetList(target_list);
+    PL_ASSERT(&target_list);
   }
 
  protected:
@@ -48,7 +49,8 @@ class UpdateExecutor : public AbstractExecutor {
  private:
   storage::DataTable *target_table_ = nullptr;
 
-  std::unique_ptr<planner::ProjectInfo> project_info_;
+  // std::unique_ptr<planner::ProjectInfo> project_info_;
+  const planner::ProjectInfo *project_info_ = nullptr;
 };
 
 }  // namespace executor

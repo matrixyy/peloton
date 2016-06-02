@@ -10,8 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
-
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -72,7 +70,6 @@
 #include "backend/storage/data_table.h"
 #include "backend/storage/table_factory.h"
 
-
 namespace peloton {
 namespace benchmark {
 namespace ycsb {
@@ -109,8 +106,8 @@ MixedPlans PrepareMixedPlan() {
   }
 
   // Create and set up index scan executor
-  planner::IndexScanPlan index_scan_node(
-      user_table, predicate, column_ids, index_scan_desc);
+  planner::IndexScanPlan index_scan_node(user_table, predicate, column_ids,
+                                         index_scan_desc);
 
   executor::IndexScanExecutor *index_scan_executor =
       new executor::IndexScanExecutor(&index_scan_node, nullptr);
@@ -121,9 +118,9 @@ MixedPlans PrepareMixedPlan() {
   // UPDATE
   /////////////////////////////////////////////////////////
 
-  planner::IndexScanPlan update_index_scan_node(
-      user_table, predicate, column_ids, index_scan_desc);
-  
+  planner::IndexScanPlan update_index_scan_node(user_table, predicate,
+                                                column_ids, index_scan_desc);
+
   executor::IndexScanExecutor *update_index_scan_executor =
       new executor::IndexScanExecutor(&index_scan_node, nullptr);
 
@@ -143,7 +140,7 @@ MixedPlans PrepareMixedPlan() {
                                std::move(direct_map_list)));
   planner::UpdatePlan update_node(user_table, std::move(project_info));
 
-  executor::UpdateExecutor *update_executor = 
+  executor::UpdateExecutor *update_executor =
       new executor::UpdateExecutor(&update_node, nullptr);
 
   update_executor->AddChild(update_index_scan_executor);
@@ -160,8 +157,9 @@ MixedPlans PrepareMixedPlan() {
 
   return mixed_plans;
 }
-  
-bool RunMixed(MixedPlans &mixed_plans, ZipfDistribution &zipf, int read_count, int write_count) {
+
+bool RunMixed(MixedPlans &mixed_plans, ZipfDistribution &zipf, int read_count,
+              int write_count) {
 
   std::unique_ptr<executor::ExecutorContext> context(
       new executor::ExecutorContext(nullptr));
@@ -171,7 +169,6 @@ bool RunMixed(MixedPlans &mixed_plans, ZipfDistribution &zipf, int read_count, i
   auto &txn_manager = concurrency::TransactionManagerFactory::GetInstance();
 
   auto txn = txn_manager.BeginTransaction();
-
 
   for (int i = 0; i < read_count; i++) {
 
@@ -218,14 +215,13 @@ bool RunMixed(MixedPlans &mixed_plans, ZipfDistribution &zipf, int read_count, i
     TargetList target_list;
     // std::string update_raw_value(ycsb_field_length - 1, 'u');
     int update_raw_value = 2;
-  
+
     Value update_val = ValueFactory::GetIntegerValue(update_raw_value);
 
     target_list.emplace_back(
         1, expression::ExpressionUtil::ConstantValueFactory(update_val));
 
     mixed_plans.update_executor_->SetTargetList(target_list);
-
 
     /////////////////////////////////////////////////////////
     // EXECUTE
@@ -237,7 +233,6 @@ bool RunMixed(MixedPlans &mixed_plans, ZipfDistribution &zipf, int read_count, i
       txn_manager.AbortTransaction();
       return false;
     }
-
   }
 
   // transaction passed execution.
@@ -247,7 +242,7 @@ bool RunMixed(MixedPlans &mixed_plans, ZipfDistribution &zipf, int read_count, i
 
   if (result == Result::RESULT_SUCCESS) {
     return true;
-    
+
   } else {
     // transaction failed commitment.
     assert(result == Result::RESULT_ABORTED ||
@@ -255,7 +250,6 @@ bool RunMixed(MixedPlans &mixed_plans, ZipfDistribution &zipf, int read_count, i
     return false;
   }
 }
-
 }
 }
 }

@@ -42,8 +42,8 @@ void Usage(FILE *out) {
       "sread, ewrite, occrb, and to\n"
       "   -g --gc_protocol       :  choose gc protocol, default OFF\n"
       "                             gc protocol could be off, co, va\n"
-      "   -q --queue_scheduler       :  choose queue scheduler, default OFF\n"
-      "                             scheduler could be queue...");
+      "   -q --queue_scheduler       :  queue scheduler, default OFF\n"
+      "                             # of queries into the queue per time..");
   exit(EXIT_FAILURE);
 }
 
@@ -59,7 +59,7 @@ static struct option opts[] = {
     {"mix_txn", no_argument, NULL, 'm'},
     {"protocol", optional_argument, NULL, 'p'},
     {"gc_protocol", optional_argument, NULL, 'g'},
-    {"queue_scheduler", no_argument, NULL, 'q'},
+    {"queue_scheduler", optional_argument, NULL, 'q'},
     {NULL, 0, NULL, 0}};
 
 void ValidateScaleFactor(const configuration &state) {
@@ -125,6 +125,15 @@ void ValidateZipfTheta(const configuration &state) {
   LOG_INFO("%s : %lf", "zipf_theta", state.zipf_theta);
 }
 
+void ValidateQueueScheduler(const configuration &state) {
+  if (state.queue_scheduler < 0) {
+    LOG_ERROR("Invalid queue_scheduler :: %d", state.queue_scheduler);
+    exit(EXIT_FAILURE);
+  }
+
+  LOG_INFO("%s : %d", "queue_scheduler", state.queue_scheduler);
+}
+
 void ParseArguments(int argc, char *argv[], configuration &state) {
   // Default Values
   state.scale_factor = 1;
@@ -136,13 +145,13 @@ void ParseArguments(int argc, char *argv[], configuration &state) {
   state.zipf_theta = 0.0;
   state.run_mix = false;
   state.run_backoff = false;
-  state.queue_scheduler = false;
+  state.queue_scheduler = 0;  // 0 means these is no queue
   state.protocol = CONCURRENCY_TYPE_OPTIMISTIC;
   state.gc_protocol = GC_TYPE_OFF;
   // Parse args
   while (1) {
     int idx = 0;
-    int c = getopt_long(argc, argv, "ahmeqk:d:s:c:u:b:z:p:g:", opts, &idx);
+    int c = getopt_long(argc, argv, "ahmek:d:s:q:c:u:b:z:p:g:", opts, &idx);
 
     if (c == -1) break;
 
@@ -175,7 +184,7 @@ void ParseArguments(int argc, char *argv[], configuration &state) {
         state.run_backoff = true;
         break;
       case 'q':
-        state.queue_scheduler = true;
+        state.queue_scheduler = atoi(optarg);
         break;
       case 'p': {
         char *protocol = optarg;
@@ -232,10 +241,10 @@ void ParseArguments(int argc, char *argv[], configuration &state) {
   ValidateDuration(state);
   ValidateSnapshotDuration(state);
   ValidateZipfTheta(state);
+  ValidateQueueScheduler(state);
 
   LOG_INFO("%s : %d", "Run mix query", state.run_mix);
   LOG_INFO("%s : %d", "Run exponential backoff", state.run_backoff);
-  LOG_INFO("%s : %d", "Run queue scheduler", state.queue_scheduler);
 }
 
 }  // namespace ycsb

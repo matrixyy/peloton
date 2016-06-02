@@ -35,7 +35,8 @@ extern configuration state;
 extern storage::DataTable* user_table;
 
 void RunWorkload();
-
+void TestRunWorkload();
+void TestGenerate();
 /////////////////////////////////////////////////////////
 // TRANSACTION TYPES
 /////////////////////////////////////////////////////////
@@ -88,17 +89,22 @@ class UpdateQuery : public concurrency::TransactionQuery {
               planner::UpdatePlan* update_plan)
       : index_scan_executor_(index_scan_executor),
         update_executor_(update_executor),
-        update_plan_(update_plan) {}
+        update_plan_(update_plan),
+        context_(nullptr) {}
 
   void SetContext(executor::ExecutorContext* context) {
     index_scan_executor_->SetContext(context);
     update_executor_->SetContext(context);
+    context_ = context;
   }
   ~UpdateQuery() {}
 
   void ResetState() { index_scan_executor_->ResetState(); }
 
   void Cleanup() {
+    delete context_;
+    context_ = nullptr;
+
     delete index_scan_executor_;
     index_scan_executor_ = nullptr;
 
@@ -128,13 +134,17 @@ class UpdateQuery : public concurrency::TransactionQuery {
   executor::IndexScanExecutor* index_scan_executor_;
   executor::UpdateExecutor* update_executor_;
   planner::UpdatePlan* update_plan_;
+  executor::ExecutorContext* context_;
 };
 
 UpdatePlans PrepareUpdatePlan();
 bool RunUpdate(UpdatePlans& update_plans, ZipfDistribution& zipf);
-UpdateQuery* GenerateAndQueueUpdate(ZipfDistribution& zipf);
-bool PopAndExecuteQuery(UpdateQuery* query);
+void GenerateAndQueueUpdate(ZipfDistribution& zipf);
+UpdateQuery* GenerateUpdate(ZipfDistribution& zipf);
+bool PopAndExecuteQuery();
+bool ExecuteQuery(concurrency::TransactionQuery* query);
 void DestroyUpdateQuery(concurrency::TransactionQuery* query);
+
 /////////////////////////////////////////////////////////
 struct MixedPlans {
 

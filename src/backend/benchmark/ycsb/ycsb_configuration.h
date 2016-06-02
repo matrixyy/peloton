@@ -62,6 +62,8 @@ class configuration {
 
   double abort_rate;
 
+  double generate_rate;
+
   // Theta in zipf distribution to control skewness
   double zipf_theta;
 
@@ -71,8 +73,8 @@ class configuration {
   // enable exponential backoff
   bool run_backoff;
 
-  // whether using Queue scheduler
-  bool queue_scheduler;
+  // using Queue scheduler: # of queries into the queue per time
+  int queue_scheduler;
 
   // protocol type
   ConcurrencyType protocol;
@@ -96,6 +98,8 @@ void ValidateBackendCount(const configuration &state);
 void ValidateDuration(const configuration &state);
 
 void ValidateSnapshotDuration(const configuration &state);
+
+void ValidateQueueScheduler(const configuration &state);
 
 void ParseArguments(int argc, char *argv[], configuration &state);
 
